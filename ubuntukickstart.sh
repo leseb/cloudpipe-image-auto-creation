@@ -15,7 +15,7 @@ CLOUDPIPECONF_PATH=${CLOUDPIPECONF_PATH:-cloudpipeconf.sh}
 
 UBUNTU_MIRROR_URL=${UBUNTU_MIRROR_URL:-http://archive.ubuntu.com/ubuntu}
 
-NETBOOT_IMG=${NETBOOT_IMG:-http://archive.ubuntu.com/ubuntu/dists/natty/main/installer-i386/current/images/netboot/netboot.tar.gz}
+NETBOOT_IMG=${NETBOOT_IMG:-http://archive.ubuntu.com/ubuntu/dists/precise/main/installer-i386/current/images/netboot/netboot.tar.gz}
 
 NETWORK_NAME=${NETWORK_NAME:-ubuntu-pxe}
 
