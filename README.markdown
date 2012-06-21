@@ -1,6 +1,6 @@
 # Pre-Requirements
 
-* Host OS: Ubuntu 11.04. (Because the script tested only with Ubuntu 11.04).
+* Host OS: Ubuntu 12.04.
 * Access to the internet (But if you can use your local ubuntu mirror, no internet access will need. Again, tested only with official mirror accessible via the internet).
 * root access (or sudo).
 
