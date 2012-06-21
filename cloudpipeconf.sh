@@ -7,18 +7,16 @@
 ###########################################
 
 
-PACKAGES="vim openvpn vzctl bridge-utils unzip"
+PACKAGES="vim openvpn bridge-utils unzip"
 
 function eprint {
     echo "updating $FILE ..."
 }
 
 
-# first of all, install openvpn and vzctl
+# first of all, install openvpn
 
-apt-get update
-
-apt-get -y install $PACKAGES
+apt-get update && apt-get -y install $PACKAGES
 
 if [ $? = "0" ]; then
     echo "successful packages installation!"
@@ -34,12 +32,16 @@ FILE="/etc/network/interfaces"
 eprint
 
 cat > $FILE << FILE_EOF
+# The loopback network interface
 auto lo
 iface lo inet loopback
- 
+
+# The primary network interface
 auto eth0
 iface eth0 inet manual
- 
+  up ifconfig $IFACE 0.0.0.0 up
+  down ifconfig $IFACE down
+
 auto br0
 iface br0 inet dhcp
   bridge_ports eth0
@@ -54,40 +56,28 @@ eprint
 cat > $FILE << FILE_EOF
 
 . /lib/lsb/init-functions
- 
-LOG=/tmp/rc.log
-SUCCESS=false
-COUNT=0
-ADDR=\$(ip addr show br0 | egrep -o "inet [0-9\.]+" | cut -d' ' -f2)
-echo "Booting..." > \$LOG
-while [ \$COUNT -lt 10 ]; do
-  echo "[count: \$COUNT]: Trying to download payload from userdata..." >> \$LOG
-  wget --header="X-Forwarded-For: \$ADDR" http://169.254.169.254/latest/user-data -O /tmp/payload.b64 && SUCCESS=true
-  [ \$SUCCESS = true ] && break
-  COUNT=\`expr \$COUNT + 1\`
-  sleep 5
-done
- 
-echo "Sending Gratuitous ARP..." >> \$LOG
-arpsend -U -i \$ADDR br0 -c 1
- 
-if [ \$SUCCESS = true ]; then
-  echo "Decrypting base64 payload" >> \$LOG
-  openssl enc -d -base64 -in /tmp/payload.b64 -out /tmp/payload.zip
- 
-  mkdir -p /tmp/payload
-  echo Unzipping payload file >> \$LOG
-  unzip -o /tmp/payload.zip -d /tmp/payload/
-fi
+
+echo Downloading payload from userdata
+wget http://169.254.169.254/latest/user-data -O /tmp/payload.b64
+echo Decrypting base64 payload
+openssl enc -d -base64 -in /tmp/payload.b64 -out /tmp/payload.zip
+
+mkdir -p /tmp/payload
+echo Unzipping payload file
+unzip -o /tmp/payload.zip -d /tmp/payload/
+
+# if the autorun.sh script exists, run it
 if [ -e /tmp/payload/autorun.sh ]; then
-  echo Running autorun.sh >> \$LOG
-  cd /tmp/payload
-  sh /tmp/payload/autorun.sh
+    echo Running autorun.sh
+    cd /tmp/payload
+    chmod 700 /etc/openvpn/server.key
+    sh /tmp/payload/autorun.sh
+    if [ ! -e /etc/openvpn/dh1024.pem ]; then
+        openssl dhparam -out /etc/openvpn/dh1024.pem 1024
+    fi
 else
-  echo rc.local : No autorun script to run >> \$LOG
+  echo rc.local : No autorun script to run
 fi
- 
-exit 0
 FILE_EOF
 
 
@@ -98,37 +88,39 @@ eprint
 cat > $FILE << FILE_EOF
 port 1194
 proto udp
-dev tap
+dev tap0
 up "/etc/openvpn/up.sh br0"
 down "/etc/openvpn/down.sh br0"
- 
+script-security 3 system
+
 persist-key
 persist-tun
 
 ca ca.crt
 cert server.crt
-key server.key
- 
+key server.key  # This file should be kept secret
+
 dh dh1024.pem
- 
+ifconfig-pool-persist ipp.txt
+
 server-bridge VPN_IP DHCP_SUBNET DHCP_LOWER DHCP_UPPER
- 
+
 client-to-client
 keepalive 10 120
 comp-lzo
- 
+
 max-clients 1
- 
+
 user nobody
 group nogroup
- 
+
+persist-key
+persist-tun
+
 status openvpn-status.log
-status openvpn.log
- 
+
 verb 3
 mute 20
- 
-management 0.0.0.0 7505
 FILE_EOF
 
 
@@ -139,12 +131,12 @@ eprint
 
 cat > $FILE << FILE_EOF
 #!/bin/sh
- 
-BR=\$1
-DEV=\$2
-MTU=\$3
-/sbin/ifconfig \$DEV mtu \$MTU promisc up
-/usr/sbin/brctl addif \$BR \$DEV
+
+BR=$1
+DEV=$2
+MTU=$3
+/sbin/ifconfig $DEV mtu $MTU promisc up
+/sbin/brctl addif $BR $DEV
 FILE_EOF
 
 chmod a+x $FILE
@@ -157,12 +149,12 @@ eprint
 
 cat > $FILE << FILE_EOF
 #!/bin/sh
- 
-BR=\$1
-DEV=\$2
- 
-/usr/sbin/brctl delif \$BR \$DEV
-/sbin/ifconfig \$DEV down
+
+BR=$1
+DEV=$2
+
+/usr/sbin/brctl delif $BR $DEV
+/sbin/ifconfig $DEV down
 FILE_EOF
 
 chmod a+x $FILE
